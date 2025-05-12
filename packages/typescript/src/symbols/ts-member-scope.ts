@@ -19,7 +19,7 @@ export function createTSMemberScope(
     flags:
       isStatic ?
         OutputScopeFlags.StaticMemberScope
-      : OutputScopeFlags.MemberScope,
+      : OutputScopeFlags.MemberScope | OutputScopeFlags.InstanceMemberScope,
     owner,
     parent,
     isStatic,

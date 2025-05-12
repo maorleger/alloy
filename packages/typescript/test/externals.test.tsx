@@ -1,7 +1,9 @@
-import { Output, render } from "@alloy-js/core";
+import { Output, refkey, render, useBinder } from "@alloy-js/core";
 import { it } from "vitest";
 import { fs } from "../src/builtins/node.js";
 import {
+  ClassDeclaration,
+  ClassMethod,
   createPackage,
   FunctionDeclaration,
   PackageDirectory,
@@ -151,8 +153,8 @@ it("can import static members", () => {
               { name: "nested", staticMembers: ["nestedHandler"] },
             ],
           },
-          { name: "simple" },
-          "other",
+          { name: "namedWithoutMembers" },
+          "simple",
         ],
       },
     },
@@ -162,13 +164,13 @@ it("can import static members", () => {
     <Output externals={[mcpSdk, fs]}>
       <SourceFile path="index.ts">
         <FunctionDeclaration name="foo">
+          {mcpSdk["./server/index.js"].server}();
+          <hbr />
           {mcpSdk["./server/index.js"].server.setRequestHandler}();
           <hbr />
           {mcpSdk["./server/index.js"].server.nested.nestedHandler}();
           <hbr />
-          await {mcpSdk["./server/index.js"].server}();
-          <hbr />
-          {mcpSdk["./server/index.js"].other}();
+          {mcpSdk["./server/index.js"].namedWithoutMembers}();
           <hbr />
           {mcpSdk["./server/index.js"].simple}();
         </FunctionDeclaration>
@@ -178,14 +180,79 @@ it("can import static members", () => {
 
   assertFileContents(res, {
     "index.ts": `
-      import { other, server, simple } from "@modelcontextprotocol/sdk/server/index.js";
+      import { namedWithoutMembers, server, simple } from "@modelcontextprotocol/sdk/server/index.js";
 
       function foo() {
+        server();
         server.setRequestHandler();
         server.nested.nestedHandler();
-        await server();
-        other();
+        namedWithoutMembers();
         simple();
+      }
+    `,
+  });
+});
+
+it.only("can import instance members", () => {
+  const mcpSdk = createPackage({
+    name: "@modelcontextprotocol/sdk",
+    version: "^3.23.0",
+    descriptor: {
+      "./server/index.js": {
+        named: [
+          {
+            name: "Server",
+            instanceMembers: ["instanceHandler"],
+          },
+        ],
+      },
+    },
+  });
+
+  const handleRefKey = refkey("handle");
+  const serverRefKey = refkey("MyServer");
+  function test() {
+    const binder = useBinder();
+    const instantiation = binder.instantiateSymbolInto(
+      binder.getSymbolForRefkey(mcpSdk["./server/index.js"].Server).value!,
+      binder.getSymbolForRefkey(refkey("MyServer")).value!,
+    );
+    console.log({
+      instanceScope: binder
+        .getSymbolForRefkey(serverRefKey)
+        .value!.instanceMemberScope?.getSymbolNames(),
+    });
+  }
+  const res = render(
+    <Output externals={[mcpSdk]}>
+      <SourceFile path="index.ts">
+        <ClassDeclaration
+          name="MyServer"
+          refkey={serverRefKey}
+          extends={mcpSdk["./server/index.js"].Server}
+        >
+          <ClassMethod name="handle" refkey={handleRefKey}>
+            {test()};
+            {refkey(
+              serverRefKey,
+              mcpSdk["./server/index.js"].Server,
+              "instanceHandler",
+            )}
+            ();
+          </ClassMethod>
+        </ClassDeclaration>
+      </SourceFile>
+    </Output>,
+  );
+
+  assertFileContents(res, {
+    "index.ts": `
+      import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+
+      class MyServer extends Server {
+        handle() {
+          this.instanceHandler();
+        }
       }
     `,
   });

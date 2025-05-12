@@ -49,6 +49,7 @@ export function ref(refkey: Refkey, options?: RefOptions): () => string {
         }
       } else {
         if (currentScope?.instanceMembers !== targetDeclaration.scope) {
+          console.log(currentScope, targetDeclaration.scope);
           throw new Error(
             "Cannot resolve member symbols from a different member scope",
           );

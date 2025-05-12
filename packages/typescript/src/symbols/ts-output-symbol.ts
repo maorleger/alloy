@@ -63,6 +63,12 @@ export function createTSSymbol(options: createTsSymbolOptions): TSOutputSymbol {
 
   if (tsFlags & TSSymbolFlags.PrivateMemberContainer) {
     sym.privateMemberScope = createTSMemberScope(binder, undefined, sym);
+    sym.instanceMemberScope = createTSMemberScope(
+      binder,
+      sym.instanceMemberScope,
+      sym,
+      false,
+    );
     sym.privateStaticMemberScope = createTSMemberScope(
       binder,
       undefined,

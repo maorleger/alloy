@@ -49,6 +49,7 @@ function getKey(value: unknown): Refkey {
 
 const knownRefkeys = new Map<string, Refkey>();
 export function refkey(...args: unknown[]): Refkey {
+  console.log("refkey", args);
   const keys = args.length === 0 ? [getKey({})] : args.map((v) => getKey(v));
 
   const compositeKey = keys.map((v) => v.key).join("\u2063");

@@ -623,9 +623,9 @@ export function createOutputBinder(options: BinderOptions = {}): Binder {
   }
 
   function instantiateSymbolInto(source: OutputSymbol, target: OutputSymbol) {
-    if (target.staticMemberScope) {
-      return;
-    }
+    // if (target.staticMemberScope) {
+    //   return;
+    // }
 
     // Ensure static member scope exists
     addStaticMembersToSymbol(target);

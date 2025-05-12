@@ -22,7 +22,11 @@ export interface PackageDescriptor {
 
 export type NamedModuleDescriptor =
   | string
-  | { name: string; staticMembers?: Array<NamedModuleDescriptor> };
+  | {
+      name: string;
+      staticMembers?: Array<NamedModuleDescriptor>;
+      instanceMembers?: Array<NamedModuleDescriptor>;
+    };
 
 export interface ModuleSymbolsDescriptor {
   default?: string;
@@ -49,6 +53,62 @@ function createNamedSymbol(
   return sym;
 }
 
+function createInstanceMembers(
+  binder: Binder,
+  sym: TSOutputSymbol,
+  instanceMembers: NamedModuleDescriptor[],
+  keys: Record<string, any>,
+) {
+  const memberScope = createTSMemberScope(binder, sym.scope, sym);
+
+  for (const member of instanceMembers) {
+    const memberName = typeof member === "string" ? member : member.name;
+
+    // Create a refkey directly if it doesn't exist yet
+    if (!keys[memberName]) {
+      keys[memberName] = refkey();
+    }
+
+    const memberKey = keys[memberName];
+
+    let memberFlags = OutputSymbolFlags.InstanceMember;
+    if (typeof member === "object" && member.instanceMembers?.length) {
+      memberFlags |= OutputSymbolFlags.InstanceMemberContainer;
+    }
+    if (typeof member === "object" && member.staticMembers?.length) {
+      memberFlags |= OutputSymbolFlags.StaticMemberContainer;
+    }
+
+    const memberSym = createTSSymbol({
+      name: memberName,
+      scope: memberScope,
+      refkey: memberKey,
+      export: false,
+      default: false,
+      flags: memberFlags,
+    });
+
+    if (typeof member === "object" && member.staticMembers) {
+      // Recursively handle nested static members
+      createStaticMembers(
+        binder,
+        memberSym,
+        member.staticMembers,
+        keys[memberName],
+      );
+    }
+    if (typeof member === "object" && member.instanceMembers) {
+      // Recursively handle nested instance members
+      createInstanceMembers(
+        binder,
+        memberSym,
+        member.instanceMembers,
+        keys[memberName],
+      );
+    }
+  }
+}
+
 function createStaticMembers(
   binder: Binder,
   namespaceSym: TSOutputSymbol,
@@ -67,10 +127,13 @@ function createStaticMembers(
 
     const memberKey = keys[memberName];
 
-    const memberFlags =
-      typeof member === "object" && member.staticMembers?.length ?
-        OutputSymbolFlags.StaticMember | OutputSymbolFlags.StaticMemberContainer
-      : OutputSymbolFlags.StaticMember;
+    let memberFlags = OutputSymbolFlags.StaticMember;
+    if (typeof member === "object" && member.instanceMembers?.length) {
+      memberFlags |= OutputSymbolFlags.InstanceMemberContainer;
+    }
+    if (typeof member === "object" && member.staticMembers?.length) {
+      memberFlags |= OutputSymbolFlags.StaticMemberContainer;
+    }
 
     const memberSym = createTSSymbol({
       name: memberName,
@@ -87,6 +150,15 @@ function createStaticMembers(
         binder,
         memberSym,
         member.staticMembers,
+        (keys[memberName] = keys[memberName] || {}),
+      );
+    }
+    if (typeof member === "object" && member.instanceMembers) {
+      // Recursively handle instance members
+      createInstanceMembers(
+        binder,
+        memberSym,
+        member.instanceMembers,
         (keys[memberName] = keys[memberName] || {}),
       );
     }
@@ -129,13 +201,19 @@ function createSymbols(
         typeof exportedName === "string" ?
           { name: exportedName }
         : exportedName;
-      const { name, staticMembers } = namedRef;
+      const { name, staticMembers, instanceMembers } = namedRef;
       const key = keys[name];
 
-      const flags =
-        staticMembers?.length ?
-          OutputSymbolFlags.StaticMemberContainer
-        : undefined;
+      let flags = OutputSymbolFlags.None;
+      if (staticMembers && staticMembers.length > 0) {
+        flags |= OutputSymbolFlags.StaticMemberContainer;
+      }
+      if (instanceMembers && instanceMembers.length > 0) {
+        flags |= OutputSymbolFlags.InstanceMemberContainer;
+      }
+      if (flags & OutputSymbolFlags.InstanceMemberContainer) {
+        flags |= OutputSymbolFlags.MemberContainer;
+      }
 
       const namespaceSym = createNamedSymbol(
         binder,
@@ -150,6 +228,14 @@ function createSymbols(
           binder,
           namespaceSym,
           staticMembers,
+          keys[name], // pass nested keys
+        );
+      }
+      if (instanceMembers && instanceMembers.length > 0) {
+        createInstanceMembers(
+          binder,
+          namespaceSym,
+          instanceMembers,
           keys[name], // pass nested keys
         );
       }
